@@ -16,11 +16,6 @@
 
 package com.github.rosjava.android_apps.map_nav;
 
-import java.sql.Date;
-import java.text.DateFormat;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.content.DialogInterface;
@@ -31,28 +26,33 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import map_store.ListMapsResponse;
-import map_store.MapListEntry;
-import map_store.PublishMapResponse;
 
-import com.github.rosjava.android_apps.application_management.RosAppActivity;
+import com.github.rosjava.android_remocons.common_tools.apps.RosAppActivity;
+import com.google.common.collect.Lists;
+
+import org.ros.address.InetAddressFactory;
+import org.ros.android.BitmapFromCompressedImage;
 import org.ros.android.view.RosImageView;
-import org.ros.android.view.visualization.layer.RobotLayer;
+import org.ros.android.view.VirtualJoystickView;
+import org.ros.android.view.visualization.VisualizationView;
+import org.ros.android.view.visualization.layer.CameraControlListener;
+import org.ros.android.view.visualization.layer.LaserScanLayer;
+import org.ros.android.view.visualization.layer.Layer;
+import org.ros.android.view.visualization.layer.OccupancyGridLayer;
+import org.ros.android.view.visualization.layer.PathLayer;
+import org.ros.exception.RemoteException;
 import org.ros.namespace.NameResolver;
 import org.ros.node.NodeConfiguration;
 import org.ros.node.NodeMainExecutor;
 import org.ros.node.service.ServiceResponseListener;
-import org.ros.address.InetAddressFactory;
-import org.ros.android.BitmapFromCompressedImage;
-import org.ros.android.view.VirtualJoystickView;
-import org.ros.android.view.visualization.VisualizationView;
-import org.ros.android.view.visualization.layer.CameraControlListener;
-import org.ros.android.view.visualization.layer.OccupancyGridLayer;
-import org.ros.android.view.visualization.layer.LaserScanLayer;
-import org.ros.android.view.visualization.layer.PathLayer;
-import org.ros.android.view.visualization.layer.PoseSubscriberLayer;
-import org.ros.exception.RemoteException;
-import org.ros.time.NtpTimeProvider;
+
+import java.sql.Date;
+import java.text.DateFormat;
+import java.util.List;
+
+import world_canvas_msgs.ListMapsResponse;
+import world_canvas_msgs.MapListEntry;
+import world_canvas_msgs.PublishMapResponse;
 
 /**
  * @author murase@jsk.imi.i.u-tokyo.ac.jp (Kazuto Murase)
@@ -62,11 +62,11 @@ public class MainActivity extends RosAppActivity {
 	private RosImageView<sensor_msgs.CompressedImage> cameraView;
 	private VirtualJoystickView virtualJoystickView;
 	private VisualizationView mapView;
-	private ViewGroup mainLayout;
+    private ViewGroup mainLayout;
 	private ViewGroup sideLayout;
 	private Button backButton;
 	private Button chooseMapButton;
-	private MapPosePublisherLayer mapPosePublisherLayer;
+	private com.github.rosjava.android_apps.map_nav.MapPosePublisherLayer mapPosePublisherLayer;
 	private ProgressDialog waitingDialog;
 	private AlertDialog chooseMapDialog;
 	private NodeMainExecutor nodeMainExecutor;
@@ -94,18 +94,18 @@ public class MainActivity extends RosAppActivity {
 		cameraView = (RosImageView<sensor_msgs.CompressedImage>) findViewById(R.id.image);
 		cameraView.setMessageType(sensor_msgs.CompressedImage._TYPE);
 		cameraView.setMessageToBitmapCallable(new BitmapFromCompressedImage());
-		mapView = (VisualizationView) findViewById(R.id.map_view);
 		virtualJoystickView = (VirtualJoystickView) findViewById(R.id.virtual_joystick);
 		backButton = (Button) findViewById(R.id.back_button);
 		chooseMapButton = (Button) findViewById(R.id.choose_map_button);
+        mapView = (VisualizationView) findViewById(R.id.map_view);
+        mapView.onCreate(Lists.<Layer>newArrayList());
 
-		backButton.setOnClickListener(new View.OnClickListener() {
+        backButton.setOnClickListener(new View.OnClickListener() {
 			@Override
 			public void onClick(View view) {
 				onBackPressed();
 			}
 		});
-
 		chooseMapButton.setOnClickListener(new View.OnClickListener() {
 			@Override
 			public void onClick(View view) {
@@ -140,26 +140,10 @@ public class MainActivity extends RosAppActivity {
 		nodeMainExecutor.execute(virtualJoystickView,
 				nodeConfiguration.setNodeName("android/virtual_joystick"));
 
-		ViewControlLayer viewControlLayer = new ViewControlLayer(this,
-				nodeMainExecutor.getScheduledExecutorService(), cameraView,
-				mapView, mainLayout, sideLayout, params);
-
-		viewControlLayer.addListener(new CameraControlListener() {
-            @Override
-            public void onZoom(double focusX, double focusY, double factor) {
-
-            }
-
-            @Override
-            public void onTranslate(float distanceX, float distanceY) {
-
-            }
-
-            @Override
-            public void onRotate(double focusX, double focusY, double deltaAngle) {
-
-            }
-        });
+        com.github.rosjava.android_apps.map_nav.ViewControlLayer viewControlLayer =
+                new com.github.rosjava.android_apps.map_nav.ViewControlLayer(this,
+                		nodeMainExecutor.getScheduledExecutorService(), cameraView,
+                		mapView, mainLayout, sideLayout, params);
 
         String mapTopic   = remaps.get(getString(R.string.map_topic));
         String scanTopic  = remaps.get(getString(R.string.scan_topic));
@@ -167,18 +151,38 @@ public class MainActivity extends RosAppActivity {
         String initTopic  = remaps.get(getString(R.string.initial_pose_topic));
         String robotFrame = (String) params.get("robot_frame", getString(R.string.robot_frame));
 
+        OccupancyGridLayer occupancyGridLayer = new OccupancyGridLayer(appNameSpace.resolve(mapTopic).toString());
+        LaserScanLayer laserScanLayer = new LaserScanLayer(appNameSpace.resolve(scanTopic).toString());
+        PathLayer pathLayer = new PathLayer(appNameSpace.resolve(planTopic).toString());
+        mapPosePublisherLayer = new com.github.rosjava.android_apps.map_nav.MapPosePublisherLayer(this, appNameSpace, params, remaps);
+        com.github.rosjava.android_apps.map_nav.InitialPoseSubscriberLayer initialPoseSubscriberLayer =
+                new com.github.rosjava.android_apps.map_nav.InitialPoseSubscriberLayer(appNameSpace.resolve(initTopic).toString(), robotFrame);
+
         mapView.addLayer(viewControlLayer);
-		mapView.addLayer(new OccupancyGridLayer(appNameSpace.resolve(mapTopic).toString()));
-        mapView.addLayer(new LaserScanLayer(appNameSpace.resolve(scanTopic).toString()));
-        mapView.addLayer(new PathLayer(appNameSpace.resolve(planTopic).toString()));
-        mapPosePublisherLayer = new MapPosePublisherLayer(appNameSpace, this, params, remaps);
-		mapView.addLayer(mapPosePublisherLayer);
-		mapView.addLayer(new InitialPoseSubscriberLayer(appNameSpace.resolve(initTopic).toString(), robotFrame));
-		NtpTimeProvider ntpTimeProvider = new NtpTimeProvider(
-				InetAddressFactory.newFromHostString("192.168.0.1"),
-				nodeMainExecutor.getScheduledExecutorService());
-		ntpTimeProvider.startPeriodicUpdates(1, TimeUnit.MINUTES);
-		nodeConfiguration.setTimeProvider(ntpTimeProvider);
+        mapView.addLayer(occupancyGridLayer);
+        mapView.addLayer(laserScanLayer);
+        mapView.addLayer(pathLayer);
+        mapView.addLayer(mapPosePublisherLayer);
+        mapView.addLayer(initialPoseSubscriberLayer);
+
+        mapView.init(nodeMainExecutor);
+        viewControlLayer.addListener(new CameraControlListener() {
+            @Override
+            public void onZoom(float focusX, float focusY, float factor) {}
+            @Override
+            public void onDoubleTap(float x, float y) {}
+            @Override
+            public void onTranslate(float distanceX, float distanceY) {}
+            @Override
+            public void onRotate(float focusX, float focusY, double deltaAngle) {}
+        });
+
+
+//		NtpTimeProvider ntpTimeProvider = new NtpTimeProvider(
+//				InetAddressFactory.newFromHostString("192.168.0.1"),
+//				nodeMainExecutor.getScheduledExecutorService());
+//		ntpTimeProvider.startPeriodicUpdates(1, TimeUnit.MINUTES);
+//		nodeConfiguration.setTimeProvider(ntpTimeProvider);
 		nodeMainExecutor.execute(mapView, nodeConfiguration.setNodeName("android/map_view"));
 
 		readAvailableMapList();
@@ -207,7 +211,7 @@ public class MainActivity extends RosAppActivity {
 	private void readAvailableMapList() {
 		safeShowWaitingDialog("Waiting...", "Waiting for map list");
 
-        MapManager mapManager = new MapManager(this, remaps);
+        com.github.rosjava.android_apps.map_nav.MapManager mapManager = new com.github.rosjava.android_apps.map_nav.MapManager(this, remaps);
         mapManager.setNameResolver(getMasterNameSpace());
 		mapManager.setFunction("list");
 		safeShowWaitingDialog("Waiting...", "Waiting for map list");
@@ -272,7 +276,7 @@ public class MainActivity extends RosAppActivity {
 
 	private void loadMap(MapListEntry mapListEntry) {
 
-		MapManager mapManager = new MapManager(this, remaps);
+        com.github.rosjava.android_apps.map_nav.MapManager mapManager = new com.github.rosjava.android_apps.map_nav.MapManager(this, remaps);
         mapManager.setNameResolver(getMasterNameSpace());
 		mapManager.setFunction("publish");
 		mapManager.setMapId(mapListEntry.getMapId());

@@ -24,7 +24,6 @@ import android.widget.Button;
 
 import com.github.rosjava.android_remocons.common_tools.apps.RosAppActivity;
 
-import org.ros.address.InetAddressFactory;
 import org.ros.android.BitmapFromCompressedImage;
 import org.ros.android.view.RosImageView;
 import org.ros.android.view.VirtualJoystickView;
@@ -55,17 +54,17 @@ public class MainActivity extends RosAppActivity {
 		setMainWindowResource(R.layout.main);
 		super.onCreate(savedInstanceState);
 
-		cameraView = (RosImageView<sensor_msgs.CompressedImage>) findViewById(R.id.image);
-		cameraView.setMessageType(sensor_msgs.CompressedImage._TYPE);
-		cameraView.setMessageToBitmapCallable(new BitmapFromCompressedImage());
-		virtualJoystickView = (VirtualJoystickView) findViewById(R.id.virtual_joystick);
-		backButton = (Button) findViewById(R.id.back_button);
-		backButton.setOnClickListener(new View.OnClickListener() {
-			@Override
-			public void onClick(View view) {
-				onBackPressed();
-			}
-		});
+        cameraView = (RosImageView<sensor_msgs.CompressedImage>) findViewById(R.id.image);
+        cameraView.setMessageType(sensor_msgs.CompressedImage._TYPE);
+        cameraView.setMessageToBitmapCallable(new BitmapFromCompressedImage());
+        virtualJoystickView = (VirtualJoystickView) findViewById(R.id.virtual_joystick);
+        backButton = (Button) findViewById(R.id.back_button);
+        backButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                onBackPressed();
+            }
+        });
 	}
 
 	@Override

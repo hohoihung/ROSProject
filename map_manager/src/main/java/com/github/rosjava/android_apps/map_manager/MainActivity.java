@@ -16,10 +16,6 @@
 
 package com.github.rosjava.android_apps.map_manager;
 
-import java.text.DateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.app.Dialog;
@@ -40,24 +36,31 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ListView;
 
-import com.github.rosjava.android_apps.application_management.RosAppActivity;
+import com.github.rosjava.android_remocons.common_tools.apps.RosAppActivity;
+import com.google.common.collect.Lists;
 
-import org.ros.namespace.NameResolver;
-import org.ros.node.NodeConfiguration;
-import org.ros.node.NodeMainExecutor;
-import org.ros.node.service.ServiceResponseListener;
 import org.ros.address.InetAddressFactory;
 import org.ros.android.view.visualization.VisualizationView;
 import org.ros.android.view.visualization.layer.CameraControlLayer;
 import org.ros.android.view.visualization.layer.CameraControlListener;
+import org.ros.android.view.visualization.layer.Layer;
 import org.ros.android.view.visualization.layer.OccupancyGridLayer;
 import org.ros.exception.RemoteException;
+import org.ros.namespace.NameResolver;
+import org.ros.node.NodeConfiguration;
+import org.ros.node.NodeMainExecutor;
+import org.ros.node.service.ServiceResponseListener;
 
-import map_store.DeleteMapResponse;
-import map_store.ListMapsResponse;
-import map_store.MapListEntry;
-import map_store.PublishMapResponse;
-import map_store.RenameMapResponse;
+import java.text.DateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+
+import world_canvas_msgs.DeleteMapResponse;
+import world_canvas_msgs.ListMapsResponse;
+import world_canvas_msgs.MapListEntry;
+import world_canvas_msgs.PublishMapResponse;
+import world_canvas_msgs.RenameMapResponse;
 
 /**
  * @author murase@jsk.imi.i.u-tokyo.ac.jp (Kazuto Murase)
@@ -85,6 +88,7 @@ public class MainActivity extends RosAppActivity {
 	private boolean visibleMapView = true;
 	private ProgressDialog waitingDialog;
 	private AlertDialog errorDialog;
+    private CameraControlLayer cameraControlLayer;
 	private OccupancyGridLayer occupancyGridLayer;
 
 	public MainActivity() {
@@ -113,6 +117,8 @@ public class MainActivity extends RosAppActivity {
 		mapView = (VisualizationView) findViewById(R.id.map_view);
 		backButton = (Button) findViewById(R.id.back_button);
 		renameButton = (Button) findViewById(R.id.rename_button);
+        cameraControlLayer = new CameraControlLayer();
+        mapView.onCreate(Lists.<Layer>newArrayList(cameraControlLayer));
 
 		backButton.setOnClickListener(new View.OnClickListener() {
 			@Override
@@ -200,29 +206,25 @@ public class MainActivity extends RosAppActivity {
 		nodeConfiguration = NodeConfiguration.newPublic(InetAddressFactory
 				.newNonLoopback().getHostAddress(), getMasterUri());
 
-		CameraControlLayer cameraControlLayer = new CameraControlLayer(this,
-				nodeMainExecutor.getScheduledExecutorService());
-		cameraControlLayer.addListener(new CameraControlListener() {
-			@Override
-			public void onZoom(double focusX, double focusY, double factor) {
-			}
-
-			@Override
-			public void onTranslate(float distanceX, float distanceY) {
-			}
-
-			@Override
-			public void onRotate(double focusX, double focusY, double deltaAngle) {
-			}
-
-		});
-		mapView.addLayer(cameraControlLayer);
         NameResolver appNameSpace = getMasterNameSpace();
         String mapTopic = remaps.get(getString(R.string.map_topic));
-		occupancyGridLayer = new OccupancyGridLayer(appNameSpace.resolve(mapTopic).toString());
-		mapView.addLayer(occupancyGridLayer);
-		nodeMainExecutor.execute(mapView, nodeConfiguration.setNodeName("android/map_view"));
 
+        mapView.init(nodeMainExecutor);
+        cameraControlLayer.addListener(new CameraControlListener() {
+            @Override
+            public void onZoom(float focusX, float focusY, float factor) {}
+            @Override
+            public void onDoubleTap(float x, float y) {}
+            @Override
+            public void onTranslate(float distanceX, float distanceY) {}
+            @Override
+            public void onRotate(float focusX, float focusY, double deltaAngle) {}
+
+        });
+        occupancyGridLayer = new OccupancyGridLayer(appNameSpace.resolve(mapTopic).toString());
+        mapView.addLayer(occupancyGridLayer);
+
+		nodeMainExecutor.execute(mapView, nodeConfiguration.setNodeName("android/map_view"));
 		updateMapList();
 	}
 
@@ -249,10 +251,13 @@ public class MainActivity extends RosAppActivity {
 					@Override
 					public void onSuccess(PublishMapResponse message) {
 						safeDismissWaitingDialog();
-						if (!visibleMapView) {
-							mapView.addLayer(occupancyGridLayer);
-							visibleMapView = true;
-						}
+                        // disabling temporarily until testing
+                        // this api got deprecated
+                        // see https://github.com/rosjava/android_apps/issues/42
+                        // if (!visibleMapView) {
+						//	mapView.addLayer(occupancyGridLayer);
+						//	visibleMapView = true;
+						// }
 					}
 				});
 
@@ -381,8 +386,11 @@ public class MainActivity extends RosAppActivity {
 									}
 									switch (radioFocusRelation) {
 									case 0:
-										mapView.hideLayer(occupancyGridLayer);
-										visibleMapView = false;
+                                        // disabling temporarily until testing
+                                        // this api got deprecated
+                                        // see https://github.com/rosjava/android_apps/issues/42
+										//mapView.hideLayer(occupancyGridLayer);
+										//visibleMapView = false;
 										radioFocus = -1;
 										break;
 									case 1:
